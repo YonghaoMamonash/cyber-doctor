@@ -3,6 +3,7 @@ __pycache__/
 migrations/
 !migrations/__init__.py
 
+.codex
 .conda
 .env
 .vscode/
@@ -13,3 +14,4 @@ data/
 user_data/
 config/config-local.yaml
 project_structure.txt
+Polish.md

@@ -104,7 +104,6 @@ Option：
    或者
    git clone git@github.com:Warma10032/cyber-doctor.git
    ```
-   
 2. **配置大模型API**
 
    复制 `.env.example`为 `.env`，填写 `.env`内相关API配置。
@@ -124,7 +123,6 @@ Option：
    由于团队本身缺少申请/测试多家API的能力，可能会有各种bug，**欢迎各位提出相关的issue和PR一起来解决API适配问题，你的行动是对开源社区最大的帮助。**
 
 3. **填写 `config/config-web.yaml`配置文件**
-
 4. **创建python环境（python>=3.10，建议为3.10）**
 
    建议使用conda管理环境
@@ -139,7 +137,6 @@ Option：
    ```bash
    pip install -r requirements.txt
    ```
-   
 5. **启动项目**
 
    ```bash
