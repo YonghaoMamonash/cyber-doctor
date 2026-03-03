@@ -4,14 +4,14 @@ import base64
 from typing import Callable, List, Dict, Tuple
 import time
 import json
-from client.clientfactory import Clientfactory
-from qa.purpose_type import userPurposeType
 from pathlib import Path
-from ppt_docx.ppt_generation import generate as generate_ppt
-from ppt_docx.ppt_content import generate_ppt_content
-from ppt_docx.docx_generation import generate_docx_content as generate_docx
-from ppt_docx.docx_content import generate_docx_content
-from rag import rag_chain
+
+from client.clientfactory import Clientfactory
+from config.config import Config
+from env import get_env_value
+from Internet.Internet_chain import InternetSearchChain
+from kg.Graph import GraphDao
+from model.KG.search_service import search
 from audio.audio_extract import (
     extract_text,
     extract_language,
@@ -19,12 +19,14 @@ from audio.audio_extract import (
     get_tts_model_name,
 )
 from audio.audio_generate import audio_generate
-from model.KG.search_service import search
-from Internet.Internet_chain import InternetSearchChain
-from kg.Graph import GraphDao
-from config.config import Config
+from ppt_docx.docx_content import generate_docx_content
+from ppt_docx.docx_generation import generate_docx_content as generate_docx
+from ppt_docx.ppt_content import generate_ppt_content
+from ppt_docx.ppt_generation import generate as generate_ppt
+from qa.kg_relation_filter import normalize_relationships
 from qa.purpose_type import userPurposeType
-from env import get_env_value
+from rag import rag_chain
+from utils.console import safe_print
 
 
 _dao = GraphDao()
@@ -39,29 +41,48 @@ def relation_tool(entities: List[Dict] | None) -> str | None:
     relationships = set()  # 使用集合来避免重复关系
     relationship_match = []
 
-    searchKey = Config.get_instance().get_with_nested_params("model", "graph-entity", "search-key")
+    searchKey = Config.get_instance().get_with_nested_params(
+        "model", "graph-entity", "search-key"
+    )
+    max_relations = Config.get_instance().get_with_nested_params(
+        "model", "graph-entity", "max-relations"
+    )
+    allowed_relation_types = set(
+        Config.get_instance().get_with_nested_params(
+            "database", "neo4j", "relationship-type"
+        )
+    )
+
     # 遍历每个实体并查询与其他实体的关系
     for entity in entities:
-        entity_name = entity[searchKey]
+        entity_name = entity.get(searchKey)
+        if not entity_name:
+            continue
         for k, v in entity.items():
             relationships.add(f"{entity_name} {k}: {v}")
 
         # 查询每个实体与其他实体的关系a-r-b
         relationship_match.append(_dao.query_relationship_by_name(entity_name))
-        
+
+    relationship_rows = []
     # 抽取并记录每个实体与其他实体的关系
     for i in range(len(relationship_match)):
-        for record in relationship_match[i]:
+        for record in relationship_match[i] or []:
             # 获取起始节点和结束节点的名称
-
-            start_name = record["r"].start_node[searchKey]
-            end_name = record["r"].end_node[searchKey]
+            start_name = record["r"].start_node.get(searchKey, "")
+            end_name = record["r"].end_node.get(searchKey, "")
 
             # 获取关系类型
             rel = type(record["r"]).__name__  # 获取关系名称，比如 CAUSES
 
-            # 构建关系字符串并添加到集合，确保不会重复添加
-            relationships.add(f"{start_name} {rel} {end_name}")
+            relationship_rows.append((start_name, rel, end_name))
+
+    normalized_relations = normalize_relationships(
+        relationship_rows,
+        allowed_types=allowed_relation_types if allowed_relation_types else None,
+        max_items=max_relations,
+    )
+    relationships.update(normalized_relations)
 
     # 返回关系集合的内容
     if relationships:
@@ -89,11 +110,11 @@ def KG_tool(
         # 此处在使用知识图谱之前，需先检查问题的实体
         entities = check_entity(question)
         kg_info = relation_tool(entities)
-    except:
-        pass
+    except Exception as e:
+        print(f"KG retrieval failed: {e}")
 
     if kg_info is not None:
-        print(f"KG_tool: \n {kg_info}")
+        safe_print("KG_tool:", kg_info)
         question = f"{question}\n从知识图谱中检索到的信息如下{kg_info}\n请你基于知识图谱的信息去回答,并给出知识图谱检索到的信息"
 
     response = Clientfactory().get_client().chat_with_ai_stream(question, history)

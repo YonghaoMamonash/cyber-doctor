@@ -8,11 +8,110 @@ cache:
 Knowledge-base-path: ./konwledge-base
 
 model:
+  agent:
+    planning:
+      enabled: true
+      llm-decision-enabled: true
+      allow-override-explicit-intent: false
+    memory:
+      short-term:
+        enabled: true
+        max-turns: 8
+        max-message-chars: 600
+      long-term:
+        enabled: true
+        top-k: 3
+        provider: persistent-vector
+        file-path: data/memory/long_term_memory.jsonl
+        max-records: 5000
+        vector-dim: 256
+    external:
+      tool-advice:
+        enabled: false
+        max-mcp-suggestions: 3
+      a2a:
+        enabled: false
+        mode: assist
+        endpoint: "http://127.0.0.1:8788/rpc"
+        agent-card-url: "http://127.0.0.1:8788/.well-known/agent.json"
+        timeout-seconds: 15
+        min-question-chars: 8
+      mcp:
+        catalog:
+          - id: ai.exa/exa
+            name: Exa MCP
+            description: Fast web search and crawling for retrieval.
+            endpoint: https://mcp.exa.ai/mcp
+            repository: https://github.com/exa-labs/exa-mcp-server
+            source: mcp-registry
+            tags: [search, retrieval, web, research]
+          - id: ai.com.mcp/hapi-mcp
+            name: HAPI MCP
+            description: Expose OpenAPI REST APIs as MCP tools (suitable for medical API wrapping).
+            endpoint: https://{HAPI_FQDN}:{HAPI_PORT}/mcp
+            repository: https://github.com/larebelion/hapimcp
+            source: mcp-registry
+            tags: [structured, api, openapi, medical, integration]
+          - id: ai.com.mcp/registry
+            name: MCP Registry MCP
+            description: Discover and publish MCP servers.
+            endpoint: https://registry.modelcontextprotocol.io/v0.1/servers
+            repository: https://github.com/modelcontextprotocol/registry
+            source: mcp-registry
+            tags: [registry, discovery, ecosystem]
+          - id: ai.com.mcp/skills-search
+            name: Agent Skills Search MCP
+            description: Search and discover agent skills.
+            endpoint: https://skills-sh.run.mcp.com.ai/mcp
+            repository: https://github.com/agentskills/agentskills
+            source: mcp-registry
+            tags: [skills, discovery, search]
+  rag:
+    indexing:
+      chunk-size: 1200
+      chunk-overlap: 120
+      stale-days: 0
+    retrieval:
+      top-k-per-query: 6
+      max-context-docs: 8
+      query-strategy: auto
+    vector-store:
+      provider: faiss
+      neo4j:
+        label: RagChunk
+        index-name: rag_chunks_index
+        text-property: text
+        embedding-property: embedding
+        metadata-property: metadata_json
+        reset-on-build: true
+    query-rewrite:
+      enabled: true
+      mode: followup-only
+    multi-query:
+      enabled: true
+      count: 3
+    raptor-lite:
+      enabled: true
+      summary-max-chars: 260
+      summary-search-k: 6
+      summary-top-k: 3
+    self-rag:
+      enabled: true
+      min-grounded-score: 70
+      max-retries: 1
+      max-seconds: 6
+      max-extra-queries: 2
+    answer-self-check:
+      enabled: true
   graph-entity:
     # 知识图谱中检索实体时的搜索主键，即匹配这个键对应的值，一般为“名称”或"name"
     search-key: 名称
+    max-relations: 60
   # 编码模型配置，仅在要使用知识库功能时需要配置
   embedding: 
+    provider: modelscope
+    zhipu-model: embedding-3
+    api-key-env: EMBEDDING_API_KEY
     # 构建知识库时用于文本向量化的modelscope模型路径，windows下默认安装路径如下，设置为其他路径会重新下载到该路径
     model-path: C:/Users/SEAN/.cache/modelscope/hub/
     # modelscope模型名称和版本，可在modelscope官网查看，会自动下载，注意斜杠方向”/“
