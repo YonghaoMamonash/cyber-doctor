@@ -16,9 +16,341 @@ import speech_recognition as sr
 from opencc import OpenCC
 import os
 
+from utils.answer_guard import ANSWER_FALLBACK_MESSAGE, is_valid_answer_payload
+from utils.chat_ui import format_ai_response_as_cards
+from utils.theme_mode import THEME_MODE_OPTIONS, THEME_MODE_SYSTEM, normalize_theme_mode
+
 
 AVATAR = ("resource/user.png", "resource/bot.jpg")
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+MEDICAL_THEME_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700&family=Noto+Sans:wght@400;500;700&display=swap');
+
+:root {
+    --healing-blue: #2563EB;
+    --calm-blue: #1E3A8A;
+    --deep-olive: #3F6212;
+    --bg-soft: #F9FAFB;
+    --surface: #FFFFFF;
+    --surface-soft: #F8FBFF;
+    --border-soft: #D8E1F0;
+    --card-border: #DBE5F6;
+    --text-main: #0F172A;
+    --text-muted: #6B7280;
+    --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.10);
+    --shadow-strong: 0 20px 45px rgba(30, 58, 138, 0.16);
+    --theme-chip-bg: #FFFFFF;
+    --theme-chip-border: rgba(37, 99, 235, 0.28);
+    --theme-chip-text: #1E3A8A;
+    --theme-chip-active-bg: #2563EB;
+    --theme-chip-active-text: #FFFFFF;
+}
+
+[data-theme="dark"] {
+    --healing-blue: #60A5FA;
+    --calm-blue: #BFDBFE;
+    --deep-olive: #A3E635;
+    --bg-soft: #0B1220;
+    --surface: #111827;
+    --surface-soft: #1A2437;
+    --border-soft: #334155;
+    --card-border: #334155;
+    --text-main: #E5E7EB;
+    --text-muted: #94A3B8;
+    --shadow-soft: 0 12px 30px rgba(2, 6, 23, 0.52);
+    --shadow-strong: 0 24px 50px rgba(2, 6, 23, 0.65);
+    --theme-chip-bg: #111827;
+    --theme-chip-border: #334155;
+    --theme-chip-text: #CBD5E1;
+    --theme-chip-active-bg: #1D4ED8;
+    --theme-chip-active-text: #EFF6FF;
+}
+
+.gradio-container {
+    font-family: 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: var(--text-main);
+    background:
+        radial-gradient(circle at 92% 4%, rgba(37, 99, 235, 0.14), transparent 40%),
+        var(--bg-soft);
+    padding-bottom: 84px;
+    transition: background-color 180ms ease, color 180ms ease;
+}
+
+[data-theme="dark"] .gradio-container {
+    background:
+        radial-gradient(circle at 92% 4%, rgba(59, 130, 246, 0.30), transparent 42%),
+        linear-gradient(180deg, #0B1220 0%, #0F172A 100%);
+}
+
+#app-title h1 {
+    font-family: 'Figtree', 'Noto Sans', sans-serif;
+    color: var(--calm-blue);
+    letter-spacing: 0.02em;
+    font-weight: 700;
+}
+
+#theme-toggle-row {
+    margin-top: -4px;
+    margin-bottom: 10px;
+}
+
+#theme-mode .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#theme-mode .wrap label {
+    border-radius: 999px !important;
+    border: 1px solid var(--theme-chip-border) !important;
+    background: var(--theme-chip-bg) !important;
+    color: var(--theme-chip-text) !important;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    transition: all 180ms ease;
+    cursor: pointer !important;
+    padding: 0 10px !important;
+}
+
+#theme-mode .wrap label:hover {
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
+    transform: translateY(-1px);
+}
+
+#theme-mode .wrap label:has(input:checked),
+#theme-mode .wrap label.selected,
+#theme-mode .wrap label[data-selected="true"] {
+    background: var(--theme-chip-active-bg) !important;
+    border-color: var(--theme-chip-active-bg) !important;
+    color: var(--theme-chip-active-text) !important;
+}
+
+#cyber-chatbot {
+    border-radius: 20px;
+    border: 1px solid var(--border-soft);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-soft) 100%);
+    box-shadow: var(--shadow-strong);
+}
+
+#cyber-chatbot .message {
+    border-radius: 16px !important;
+    border: 1px solid var(--card-border) !important;
+    background: var(--surface) !important;
+    color: var(--text-main) !important;
+    box-shadow: var(--shadow-soft);
+}
+
+#cyber-chatbot .message.user {
+    border-left: 4px solid var(--healing-blue) !important;
+}
+
+#cyber-chatbot .message.bot {
+    border-left: 4px solid var(--deep-olive) !important;
+}
+
+#guide-row {
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#guide-row .guide-pill {
+    border-radius: 999px !important;
+    border: 1px solid rgba(37, 99, 235, 0.42) !important;
+    background: var(--surface) !important;
+    color: var(--calm-blue) !important;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+    transition: all 180ms ease;
+    cursor: pointer !important;
+}
+
+#guide-row .guide-pill:hover {
+    border-color: var(--calm-blue) !important;
+    box-shadow: 0 12px 26px rgba(30, 58, 138, 0.20);
+    transform: translateY(-1px);
+}
+
+#cyber-input {
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+}
+
+#cyber-input textarea,
+#cyber-input input {
+    color: var(--text-main) !important;
+}
+
+.cyber-result-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.cyber-result-card {
+    background: var(--surface);
+    border-radius: 14px;
+    border: 1px solid var(--card-border);
+    box-shadow: var(--shadow-soft);
+    padding: 12px 14px;
+    animation: card-fade 220ms ease-out both;
+}
+
+.cyber-result-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--calm-blue);
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.cyber-card-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.cyber-result-card-body {
+    color: var(--text-main);
+    line-height: 1.62;
+    font-size: 14px;
+}
+
+#medical-disclaimer {
+    position: fixed;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    width: min(920px, calc(100% - 24px));
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.80);
+    border: 1px solid rgba(148, 163, 184, 0.52);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
+    backdrop-filter: blur(8px);
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 8px 14px;
+    z-index: 1000;
+}
+
+[data-theme="dark"] #medical-disclaimer {
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(71, 85, 105, 0.80);
+}
+
+@keyframes card-fade {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    #theme-mode .wrap label {
+        min-height: 36px;
+        font-size: 13px !important;
+    }
+
+    #guide-row .guide-pill {
+        min-height: 38px;
+        font-size: 13px !important;
+    }
+
+    #medical-disclaimer {
+        width: calc(100% - 16px);
+        bottom: 8px;
+        border-radius: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cyber-result-card,
+    #guide-row .guide-pill {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+"""
+
+MEDICAL_DISCLAIMER_HTML = """
+<div id="medical-disclaimer">
+医学免责声明：本系统仅用于健康教育与参考，不替代执业医师面对面诊断、处方或急救处理。
+</div>
+"""
+
+THEME_BOOTSTRAP_JS = """
+(currentMode) => {
+    const validModes = ["浅色", "深色", "跟随系统"];
+    const modeLabelToKey = { "浅色": "light", "深色": "dark", "跟随系统": "system" };
+
+    const setupThemeController = () => {
+        if (window.cyberDoctorThemeController) {
+            return window.cyberDoctorThemeController;
+        }
+
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const apply = (modeLabel) => {
+            const safeMode = validModes.includes(modeLabel) ? modeLabel : "跟随系统";
+            const requested = modeLabelToKey[safeMode];
+            const effectiveTheme = requested === "system" ? (media.matches ? "dark" : "light") : requested;
+
+            document.documentElement.setAttribute("data-theme", effectiveTheme);
+            document.documentElement.style.colorScheme = effectiveTheme;
+            localStorage.setItem("cyber_doctor_theme_mode", safeMode);
+            return safeMode;
+        };
+
+        const onSystemChange = () => {
+            const savedMode = localStorage.getItem("cyber_doctor_theme_mode") || "跟随系统";
+            if (savedMode === "跟随系统") {
+                apply("跟随系统");
+            }
+        };
+
+        if (!window.__cyberDoctorThemeMediaBound) {
+            if (typeof media.addEventListener === "function") {
+                media.addEventListener("change", onSystemChange);
+            } else if (typeof media.addListener === "function") {
+                media.addListener(onSystemChange);
+            }
+            window.__cyberDoctorThemeMediaBound = true;
+        }
+
+        window.cyberDoctorThemeController = { apply };
+        return window.cyberDoctorThemeController;
+    };
+
+    const controller = setupThemeController();
+    const savedMode = localStorage.getItem("cyber_doctor_theme_mode");
+    const initialMode = validModes.includes(savedMode)
+        ? savedMode
+        : (validModes.includes(currentMode) ? currentMode : "跟随系统");
+    return controller.apply(initialMode);
+}
+"""
+
+THEME_CHANGE_JS = """
+(mode) => {
+    const validModes = ["浅色", "深色", "跟随系统"];
+    if (!window.cyberDoctorThemeController || typeof window.cyberDoctorThemeController.apply !== "function") {
+        return validModes.includes(mode) ? mode : "跟随系统";
+    }
+    return window.cyberDoctorThemeController.apply(mode);
+}
+"""
+
+QUICK_GUIDE_PROMPTS = [
+    ("症状初筛", "请根据我的症状做分级判断，并告诉我是否需要立即就医。"),
+    ("用药提醒", "请给我常见安全用药建议，并标注禁忌与注意事项。"),
+    ("风险预警", "请帮我识别当前情况的风险点，并按高-中-低风险列出。"),
+    ("饮食调理", "请根据常见慢病管理给我一份可执行的饮食建议。"),
+    ("复诊建议", "请给出我何时复诊、需要携带哪些检查资料的建议。"),
+]
 
 # pip install whisper
 # pip install openai-whisper
@@ -89,6 +421,25 @@ def image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         return encoded_string
+
+
+def render_response_cards(message: str) -> str:
+    card_markup = format_ai_response_as_cards(message)
+    if card_markup:
+        return card_markup
+    return message
+
+
+def submit_quick_prompt(chatbot, prompt):
+    chat_input = {"text": prompt, "files": []}
+    yield from grodio_view(chatbot, chat_input)
+
+
+def build_quick_prompt_handler(prompt):
+    def _handler(chatbot):
+        yield from submit_quick_prompt(chatbot, prompt)
+
+    return _handler
 
 
 # 核心函数
@@ -175,6 +526,10 @@ def grodio_view(chatbot, chat_input):
     if user_message == "":
         user_message = "请你将下面的句子修饰后输出，不要包含额外的文字，句子:'请问您有什么想了解的，我将尽力为您服务'"
     answer = get_answer(user_message, chatbot, question_type, image_url)
+    if not is_valid_answer_payload(answer):
+        chatbot[-1][1] = ANSWER_FALLBACK_MESSAGE
+        yield chatbot
+        return
     bot_response = ""
 
     # 处理文本生成/其他/文档检索/知识图谱检索
@@ -188,6 +543,8 @@ def grodio_view(chatbot, chat_input):
             bot_response = bot_response + (chunk.choices[0].delta.content or "")
             chatbot[-1][1] = bot_response
             yield chatbot
+        chatbot[-1][1] = render_response_cards(bot_response)
+        yield chatbot
 
     # 处理图片生成
     if answer[1] == userPurposeType.ImageGeneration:
@@ -212,6 +569,8 @@ def grodio_view(chatbot, chat_input):
             bot_response += answer[0][i : i + 1]  # 累加当前chunk到combined_message
             chatbot[-1][1] = bot_response  # 更新chatbot对话中的最后一条消息
             yield chatbot  # 实时输出当前累积的对话内容
+        chatbot[-1][1] = render_response_cards(bot_response)
+        yield chatbot
 
     # 处理视频
     if answer[1] == userPurposeType.Video:
@@ -248,22 +607,30 @@ def grodio_view(chatbot, chat_input):
     # 处理联网搜索
     if answer[1] == userPurposeType.InternetSearch:
         if answer[3] == False:
-            output_message = (
+            reference_message = (
                 "由于网络问题，访问互联网失败，下面由我根据现有知识给出回答："
             )
         else:
             # 将字典中的内容转换为 Markdown 格式的链接
             links = "\n".join(f"[{title}]({link})" for link, title in answer[2].items())
             links += "\n"
-            output_message = f"参考资料：{links}"
-        for i in range(0, len(output_message)):
-            bot_response = output_message[: i + 1]
+            reference_message = f"参考资料：{links}"
+        for i in range(0, len(reference_message)):
+            bot_response = reference_message[: i + 1]
             chatbot[-1][1] = bot_response
             yield chatbot
+        internet_answer = ""
         for chunk in answer[0]:
-            bot_response = bot_response + (chunk.choices[0].delta.content or "")
+            internet_answer = internet_answer + (chunk.choices[0].delta.content or "")
+            bot_response = reference_message + internet_answer
             chatbot[-1][1] = bot_response
             yield chatbot
+        chatbot[-1][1] = (
+            f"{reference_message}\n{render_response_cards(internet_answer)}"
+            if internet_answer
+            else reference_message
+        )
+        yield chatbot
 
 
 def gradio_audio_view(chatbot, audio_input):
@@ -300,6 +667,10 @@ def gradio_audio_view(chatbot, audio_input):
     question_type = parse_question(user_message)
     ic(question_type)
     answer = get_answer(user_message, chatbot, question_type)
+    if not is_valid_answer_payload(answer):
+        chatbot[-1][1] = ANSWER_FALLBACK_MESSAGE
+        yield chatbot
+        return
     bot_response = ""
 
     # 处理文本生成/其他/文档检索/知识图谱检索
@@ -481,9 +852,19 @@ examples = [
 
 
 # 构建 Gradio 界面
-with gr.Blocks() as demo:
+with gr.Blocks(css=MEDICAL_THEME_CSS) as demo:
     # 标题和描述
-    gr.Markdown("# 「赛博华佗」🩺")
+    gr.Markdown("# 「赛博华佗」", elem_id="app-title")
+
+    with gr.Row(elem_id="theme-toggle-row"):
+        with gr.Column(scale=4, min_width=280):
+            theme_mode = gr.Radio(
+                choices=list(THEME_MODE_OPTIONS),
+                value=THEME_MODE_SYSTEM,
+                label="主题模式",
+                elem_id="theme-mode",
+                interactive=True,
+            )
 
     # 创建聊天布局
     with gr.Row():
@@ -492,14 +873,22 @@ with gr.Blocks() as demo:
                 height=600,
                 avatar_images=AVATAR,
                 show_copy_button=True,
+                bubble_full_width=False,
+                sanitize_html=False,
+                elem_id="cyber-chatbot",
                 latex_delimiters=[
                     {"left": "\\(", "right": "\\)", "display": True},
                     {"left": "\\[", "right": "\\]", "display": True},
                     {"left": "$$", "right": "$$", "display": True},
                     {"left": "$", "right": "$", "display": True},
                 ],
-                placeholder="\n## 欢迎与我对话 \n————本项目开源地址https://github.com/Warma10032/cyber-doctor",
+                placeholder="\n## 欢迎与我对话\n————赛博华佗将基于你提供的信息给出结构化健康建议",
             )
+
+    with gr.Row(elem_id="guide-row"):
+        guide_buttons = []
+        for label, _ in QUICK_GUIDE_PROMPTS:
+            guide_buttons.append(gr.Button(label, elem_classes=["guide-pill"], size="sm"))
 
     with gr.Row():
         with gr.Column(scale=9):
@@ -508,6 +897,7 @@ with gr.Blocks() as demo:
                 file_count="multiple",
                 placeholder="输入消息或上传文件...",
                 show_label=False,
+                elem_id="cyber-input",
             )
             audio_input = gr.Audio(
                 sources=["microphone", "upload"],
@@ -526,7 +916,33 @@ with gr.Blocks() as demo:
             examples=examples, inputs=chat_input, visible=True, examples_per_page=15
         )
 
+    gr.HTML(MEDICAL_DISCLAIMER_HTML)
+
+    demo.load(
+        fn=normalize_theme_mode,
+        inputs=[theme_mode],
+        outputs=[theme_mode],
+        js=THEME_BOOTSTRAP_JS,
+        queue=False,
+        show_progress="hidden",
+    )
+    theme_mode.change(
+        fn=normalize_theme_mode,
+        inputs=[theme_mode],
+        outputs=[theme_mode],
+        js=THEME_CHANGE_JS,
+        queue=False,
+        show_progress="hidden",
+    )
+
     chat_input.submit(fn=grodio_view, inputs=[chatbot, chat_input], outputs=[chatbot])
+    for guide_button, (_, prompt) in zip(guide_buttons, QUICK_GUIDE_PROMPTS):
+        guide_button.click(
+            fn=build_quick_prompt_handler(prompt),
+            inputs=[chatbot],
+            outputs=[chatbot],
+        )
+
     # 切换按钮点击事件
     toggle_voice_button.click(
         fn=toggle_voice_mode,

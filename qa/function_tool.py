@@ -246,6 +246,8 @@ def process_text_video_tool(question_type, question, history, image_url=None):
     except:
         return (None, question_type)
 
+    return (None, question_type)
+
 
 # 处理audio问题的函数
 def process_audio_tool(
